@@ -37,6 +37,12 @@ local USER_INPUT_SERVICE = game:GetService("UserInputService")
 -- Modules
 local Janitor = require(script.Parent.Modules.Janitor)
 local Signal = require(script.Parent.Modules.Signal)
+local KeyboardModule = nil 
+task.spawn(function() -- task.spawn() so it doesn't yield the other stuff, we can check for existence latr
+	local PlayerScripts = game:GetService("Players").LocalPlayer:WaitForChild("PlayerScripts")
+	local KeyModule = PlayerScripts:WaitForChild("PlayerModule"):WaitForChild("ControlModule"):WaitForChild("Keyboard")
+	KeyboardModule = KeyModule
+end)
 
 
 ---------------------------------------------------------------
@@ -50,6 +56,9 @@ local Keys = {}
 local HeldKeys = {}
 local KeysIndex = {}
 local ReverseKeys = {}
+local SupportedInputs = {
+	Forward = true, Left = true, Backward = true, Right = true, Jump = true
+}
 
 for i, v in ipairs(Enum.KeyCode:GetEnumItems()) do
 	Keys[v.Name] = v
@@ -134,6 +143,37 @@ function Keyboard:AreKeysDown(keys)
 		end
 	end
 	
+	return true
+end
+
+function Keyboard:AreAnyDown(keys)
+	for _, key in ipairs(keys) do
+		if Keyboard:IsKeyDown(key) == true then
+			return true 
+		end
+	end
+
+	return false
+end
+
+function Keyboard:ChangeDefaultKeybind(inputMethod: string, key: Enum.KeyCode | string)
+	if typeof(key) == Enum.KeyCode then 
+		key = ReverseKeys[key]
+	elseif type(key) == "string" then 
+		-- verify 
+		if Keys[key] == nil then 
+			warn("Keyboard module received an invalid string for Keyboard:ChangeDefaultKeybind()")
+			return false 
+		end
+	end
+	
+	
+	if SupportedInputs[inputMethod] == nil then 
+		warn(("inputMethod isn't a default keybind, you inputted %s, here's a list of supported keybinds"):format(inputMethod), SupportedInputs)
+		return false
+	end
+	
+	KeyboardModule:SetAttribute(inputMethod, string.upper(tostring(key))) 
 	return true
 end
 

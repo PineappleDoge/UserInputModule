@@ -15,7 +15,7 @@
 	Mouse:GetMouseLocation(): Vector2
 		> Return: A Vector2 containing the current mouse's X/Y 
 	
-	Mouse:VectorToWorldRaycast(Packet: Packet)
+	Mouse:Raycast(Packet: Packet)
 		> Return: The result of a raycast
 		
 	Mouse:BindFuncToInput(mouseInput: Enum.UserInputType | string, callback) 
@@ -29,6 +29,14 @@
 ]]
 ---------------------------------------------------------------
 -- Services
+type Packet = {
+	XPos: number, 
+	YPos: number,
+	Depth: number?,
+	Blacklist: {}?,
+	RaycastParams: RaycastParams?, 
+}
+
 local USER_INPUT_SERVICE = game:GetService("UserInputService")
 
 
@@ -43,6 +51,7 @@ local Signal = require(script.Parent.Modules.Signal)
 local Mouse = {
 	InputStack = {}; -- We add inputs, enuff said
 	Enabled = false;
+	Locked = false;
 }
 
 local MouseInputs = {
@@ -60,13 +69,7 @@ for name, value in pairs(MouseInputs) do
 	MouseInputsReversed[value] = name
 end
 
-type Packet = {
-	XPos: number, 
-	YPos: number,
-	Depth: number?,
-	Blacklist: {}?,
-	RaycastParams: RaycastParams?, 
-}
+local PlayerMouse = game.Players.LocalPlayer:GetMouse()
 
 
 ---------------------------------------------------------------
@@ -89,8 +92,11 @@ function Mouse:Init()
 	Mouse.MouseMovementBegan = Signal.new(Mouse._Janitor)
 	Mouse.MouseMovementEnded = Signal.new(Mouse._Janitor)
 	Mouse.NewMouseLocation = Signal.new(Mouse._Janitor)
+	Mouse.Scrolled = Signal.new(Mouse._Janitor)
 	
 	local function InputBegan(input: InputObject, gameProcessed: boolean)
+		if gameProcessed == true then return end
+		
 		if MouseInputs[input.UserInputType.Name] then 
 			HeldKeys[input.UserInputType] = true
 			Mouse.InputBegan:Fire(input.UserInputType.Name)
@@ -103,13 +109,13 @@ function Mouse:Init()
 		end
 		
 		if Mouse.InputStack[input.UserInputType] ~= nil then 
-			for i = 1, #Mouse.InputStack[input.UserInputType] do 
-				task.spawn(Mouse.InputStack[input.UserInputType][i].func)
+			for i, v in pairs(Mouse.InputStack[input.UserInputType]) do 
+				task.spawn(v.func)
 			end
 		end
 	end
 	
-	local function InputEnded(input: InputObject, gameProcessed: boolean)
+	local function InputEnded(input: InputObject)
 		if MouseInputs[input.UserInputType.Name] then 
 			HeldKeys[input.UserInputType] = nil
 			Mouse.InputEnded:Fire(input.UserInputType.Name)
@@ -122,7 +128,15 @@ function Mouse:Init()
 		end
 	end
 	
-	local function InputChanged(input: InputObject)
+	local function InputChanged(input: InputObject, gameProcessed: boolean)
+		if gameProcessed == true then return end 
+		
+		if input.UserInputType == Enum.UserInputType.MouseWheel then 
+			local Amount = input.Position.Z
+			local Direction = if Amount > 0 then "Up" elseif Amount < 0 then "Down" else "Neutral"
+			Mouse.Scrolled:Fire(Direction, Amount)
+		end
+		
 		if input.UserInputType == Enum.UserInputType.MouseMovement then 
 			Mouse.NewMouseLocation:Fire(input.Position.X, input.Position.Y)
 		end
@@ -206,7 +220,7 @@ function Mouse:GetMouseLocation(): Vector2
 	return USER_INPUT_SERVICE:GetMouseLocation()
 end
 
-function Mouse:VectorToWorldRaycast(Packet: Packet)
+function Mouse:Raycast(Packet: Packet)
 	local Camera = workspace.CurrentCamera
 	local UnitRay = Camera:ViewportPointToRay(Packet.XPos, Packet.YPos, 0)
 
@@ -216,6 +230,36 @@ function Mouse:VectorToWorldRaycast(Packet: Packet)
 	RaycastDetails.FilterDescendantsInstances = RaycastBlacklist
 	
 	return workspace:Raycast(UnitRay.Origin, UnitRay.Direction * (Packet.Depth or 1000), Packet.RaycastParams or RaycastDetails)
+end
+
+function Mouse:Lock()
+	USER_INPUT_SERVICE.MouseBehavior = Enum.MouseBehavior.LockCurrentPosition
+	Mouse.Locked = true
+end
+
+function Mouse:Unlock()
+	USER_INPUT_SERVICE.MouseBehavior = Enum.MouseBehavior.Default
+	Mouse.Locked = false
+end
+
+function Mouse:LockCenter()
+	USER_INPUT_SERVICE.MouseBehavior = Enum.MouseBehavior.LockCenter
+	Mouse.Locked = true
+end
+
+function Mouse:SetMouseIcon(image: string | nil)
+	if type(image) == "string" and string.find(image, "rbxassetid") == nil then
+		warn("Image passed is not a valid mouse object")
+		return 
+	elseif image == nil then 
+		PlayerMouse.Icon = nil
+	end
+	
+	PlayerMouse.Icon = image
+end
+
+function Mouse:SetMouseIconEnabled(bool: boolean)
+	USER_INPUT_SERVICE.MouseIconEnabled = bool 
 end
 
 
